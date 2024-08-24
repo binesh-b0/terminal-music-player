@@ -5,11 +5,12 @@ mod ui;
 
 use playlist::Playlist;
 use config::Config;
-use controls::{adjust_volume, display_progress};
+use controls::adjust_volume;
 use ui::{clear_screen, display_key_bindings, display_metadata, display_progress_bar, display_spinner};
 
 use rodio::{Decoder, OutputStream, Sink};
 use crossterm::event;
+use std::ffi::OsStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::path::Path;
@@ -21,31 +22,50 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::probe::Hint;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::default::get_probe;
+use std::env;
 
+/// Loads an audio file and extracts metadata like duration and title.
+///
+/// # Arguments
+///
+/// * `path` - A reference to the path of the audio file.
+///
+/// # Returns
+///
+/// A tuple containing the audio source, track duration, and title.
+/// On failure, returns an error.
 fn load_audio_file(path: &Path) -> Result<(Decoder<BufReader<File>>, Duration, String), Box<dyn std::error::Error>> {
+    // Open the audio file
     let file = File::open(path)?;
+
+    // Create a media source stream from the file
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    // Hints and options for probing the format and metadata
     let hint = Hint::new();
     let format_options = FormatOptions::default();
     let metadata_options = MetadataOptions::default();
 
+    // Probe the file format
     let mut probed = get_probe()
         .format(&hint, mss, &format_options, &metadata_options)?;
 
     let format = probed.format;
+
+    // Find the track with valid codec parameters
     let track = format
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
         .ok_or("No valid track found")?;
 
-    let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())?;
+    // Initialize the decoder for the found track
+    // let mut decoder = symphonia::default::get_codecs()
+    //     .make(&track.codec_params, &DecoderOptions::default())?;
 
-    let track_id = track.id;
     let mut title = "Unknown Title".to_string();
 
-    // Extract metadata, such as the title
+    // Extract metadata such as the title
     if let Some(metadata) = probed.metadata.get() {
         for rev in metadata.current().iter() {
             for tag in rev.tags().iter() {
@@ -58,7 +78,9 @@ fn load_audio_file(path: &Path) -> Result<(Decoder<BufReader<File>>, Duration, S
             }
         }
     }
+    print!("{}", title.to_string());
 
+    // Calculate the duration of the track
     let duration = track.codec_params.n_frames.map_or_else(
         || Duration::from_secs(300),
         |frames| {
@@ -67,13 +89,37 @@ fn load_audio_file(path: &Path) -> Result<(Decoder<BufReader<File>>, Duration, S
         },
     );
 
-    // This assumes you're using `rodio` for playback and creating a `Decoder`.
+    // Create a `Decoder` for `rodio` playback
     let source = Decoder::new(BufReader::new(File::open(path)?))?;
 
     Ok((source, duration, title))
 }
 
 fn main() {
+    // Read the input file path from command-line arguments
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <path_to_audio_file>", args[0]);
+        return;
+    }
+    
+    // Get the file path and extract the file name
+    let file_path = Path::new(&args[1]);
+    let file_name = match file_path.file_name().and_then(OsStr::to_str) {
+        Some(name) => name,
+        None => {
+            eprintln!("Failed to extract file name from path");
+            "unknown"
+        }
+    };
+
+    // Check if the provided path is a valid file
+    if !file_path.is_file() {
+        eprintln!("The provided path is not a valid file: {}", file_path.display());
+        return;
+    }
+
+    // Load the configuration settings
     let config = match Config::load() {
         Ok(config) => config,
         Err(e) => {
@@ -82,9 +128,11 @@ fn main() {
         }
     };
 
+    // Initialize the playlist and add the audio file to it
     let mut playlist = Playlist::new();
-    playlist.add_track(Path::new("sample.mp3").to_path_buf());
+    playlist.add_track(file_path.to_path_buf());
 
+    // Initialize the audio output stream
     let (_stream, stream_handle) = match OutputStream::try_default() {
         Ok((stream, handle)) => (stream, handle),
         Err(e) => {
@@ -93,9 +141,11 @@ fn main() {
         }
     };
 
+    // Create a shared Sink for audio playback
     let sink = Arc::new(Mutex::new(Sink::try_new(&stream_handle).unwrap()));
     sink.lock().unwrap().set_volume(config.default_volume);
 
+    // Load the audio file and extract its duration and title
     let (source, track_duration, title) = match playlist.current_track() {
         Some(track) => match load_audio_file(track) {
             Ok(result) => result,
@@ -110,21 +160,26 @@ fn main() {
         }
     };
 
+    // Start playing the audio
     let start_time = Instant::now();
     sink.lock().unwrap().append(source);
     sink.lock().unwrap().play();
 
     let mut spinner_pos = 0;
 
+    // Clear the terminal screen and display the initial UI components
     clear_screen();
-    display_metadata(&title, track_duration);
+    display_metadata(&title, track_duration, file_name);
     display_key_bindings();
 
+    // Main loop for updating the UI and handling user input
     loop {
+        // Update the progress bar and spinner
         display_progress_bar(start_time.elapsed(), track_duration);
         display_spinner(spinner_pos);
         spinner_pos += 1;
 
+        // Check for user input (e.g., play/pause, volume control)
         if event::poll(Duration::from_millis(500)).unwrap() {
             if let event::Event::Key(key) = event::read().unwrap() {
                 match key.code {
@@ -144,6 +199,7 @@ fn main() {
             }
         }
 
+        // Exit the loop if the track has finished playing
         if sink.lock().unwrap().empty() {
             break;
         }

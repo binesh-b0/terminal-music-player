@@ -1,7 +1,6 @@
-use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveTo, style::{Color, PrintStyledContent, Stylize}};
+use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveTo, style::Stylize};
 use std::io::{stdout, Write};
 use std::time::Duration;
-use unicode_segmentation::UnicodeSegmentation;
 
 pub fn clear_screen() {
     let mut stdout = stdout();
@@ -13,10 +12,11 @@ pub fn move_cursor_to(x: u16, y: u16) {
     execute!(stdout, MoveTo(x, y)).unwrap();
 }
 
-pub fn display_metadata(title: &str, duration: Duration) {
-    move_cursor_to(0, 0);
+pub fn display_metadata(title: &str, duration: Duration,file_name:&str) {
+    move_cursor_to(2, 1);
     println!(
-        "{} - Duration: {}",
+        "{}\n{} - Duration: {}",
+        file_name.blue().bold(),
         title.green().bold(),
         format_time(duration.as_secs()).blue()
     );
@@ -28,7 +28,7 @@ pub fn display_progress_bar(elapsed: Duration, total: Duration) {
     let filled_length = (progress * progress_length as f32) as usize;
     let bar = "█".repeat(filled_length) + &" ".repeat(progress_length - filled_length);
 
-    move_cursor_to(0, 2); // Adjust the position
+    move_cursor_to(0, 3);
     println!(
         "[{}] {} / {}",
         bar.yellow(),
@@ -38,8 +38,8 @@ pub fn display_progress_bar(elapsed: Duration, total: Duration) {
 }
 
 pub fn display_spinner(spinner_pos: usize) {
-    const SPINNERS: &[&str] = &["|", "/", "-", "\\"];
-    move_cursor_to(0, 4); // Adjust the position for spinner
+    const SPINNERS: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    move_cursor_to(0, 1);
     print!("{}", SPINNERS[spinner_pos % SPINNERS.len()].cyan());
     stdout().flush().unwrap();
 }
