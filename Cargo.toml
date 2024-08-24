@@ -11,3 +11,4 @@ toml = "0.8.7"
 log = "0.4"
 env_logger = "0.11.5"
 reqwest = { version = "0.12.7", features = ["blocking"] }
+symphonia = { version = "0.5", features = ["mp3"] }

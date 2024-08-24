@@ -1,4 +1,6 @@
 use serde::Deserialize;
+use std::fs;
+use std::error::Error;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -7,8 +9,9 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load() -> Self {
-        let config_str = std::fs::read_to_string("config.toml").unwrap();
-        toml::from_str(&config_str).unwrap()
+    pub fn load() -> Result<Self, Box<dyn Error>> {
+        let config_str = fs::read_to_string("config.toml")?;
+        let config: Config = toml::from_str(&config_str)?;
+        Ok(config)
     }
 }

@@ -1,5 +1,7 @@
 use rodio::Sink;
 use std::time::{Instant, Duration};
+use crossterm::{execute, cursor::MoveTo};
+use std::io::{stdout, Write};
 
 pub fn adjust_volume(sink: &Sink, increase: bool) {
     let current_volume = sink.volume();
@@ -18,6 +20,11 @@ pub fn display_progress(start_time: Instant, track_duration: Duration) {
     } else {
         Duration::new(0, 0)
     };
+
+    let mut stdout = stdout();
+    // Move the cursor instead of clearing the entire screen
+    execute!(stdout, MoveTo(0, 0)).unwrap();
+
     println!(
         "Progress: [{}/{}]",
         format_time(elapsed.as_secs()),
