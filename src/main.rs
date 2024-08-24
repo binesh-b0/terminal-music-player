@@ -1,28 +1,30 @@
-mod playlist;
 mod config;
 mod controls;
+mod playlist;
 mod ui;
 
-use playlist::Playlist;
 use config::Config;
 use controls::adjust_volume;
-use ui::{clear_screen, display_key_bindings, display_metadata, display_progress_bar, display_spinner};
+use playlist::Playlist;
+use ui::{
+    clear_screen, display_key_bindings, display_metadata, display_progress_bar, display_spinner,
+};
 
+use crossterm::event::{self, KeyCode};
 use rodio::{Decoder, OutputStream, Sink};
-use crossterm::event;
+use std::env;
 use std::ffi::OsStr;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::path::Path;
-use std::io::BufReader;
-use std::fs::File;
+use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
-use symphonia::core::meta::MetadataOptions;
 use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use symphonia::core::codecs:: CODEC_TYPE_NULL;
 use symphonia::default::get_probe;
-use std::env;
 
 /// Loads an audio file and extracts metadata like duration and title.
 ///
@@ -34,7 +36,9 @@ use std::env;
 ///
 /// A tuple containing the audio source, track duration, and title.
 /// On failure, returns an error.
-fn load_audio_file(path: &Path) -> Result<(Decoder<BufReader<File>>, Duration, String), Box<dyn std::error::Error>> {
+fn load_audio_file(
+    path: &Path,
+) -> Result<(Decoder<BufReader<File>>, Duration, String), Box<dyn std::error::Error>> {
     // Open the audio file
     let file = File::open(path)?;
 
@@ -47,8 +51,7 @@ fn load_audio_file(path: &Path) -> Result<(Decoder<BufReader<File>>, Duration, S
     let metadata_options = MetadataOptions::default();
 
     // Probe the file format
-    let mut probed = get_probe()
-        .format(&hint, mss, &format_options, &metadata_options)?;
+    let mut probed = get_probe().format(&hint, mss, &format_options, &metadata_options)?;
 
     let format = probed.format;
 
@@ -102,7 +105,7 @@ fn main() {
         eprintln!("Usage: {} <path_to_audio_file>", args[0]);
         return;
     }
-    
+
     // Get the file path and extract the file name
     let file_path = Path::new(&args[1]);
     let file_name = match file_path.file_name().and_then(OsStr::to_str) {
@@ -115,7 +118,10 @@ fn main() {
 
     // Check if the provided path is a valid file
     if !file_path.is_file() {
-        eprintln!("The provided path is not a valid file: {}", file_path.display());
+        eprintln!(
+            "The provided path is not a valid file: {}",
+            file_path.display()
+        );
         return;
     }
 
@@ -171,26 +177,39 @@ fn main() {
     clear_screen();
     display_metadata(&title, track_duration, file_name);
     display_key_bindings();
-
+    let mut is_playing = true;
+    let mut last_press_time = Instant::now();
     // Main loop for updating the UI and handling user input
     loop {
-        // Update the progress bar and spinner
-        display_progress_bar(start_time.elapsed(), track_duration);
-        display_spinner(spinner_pos);
-        spinner_pos += 1;
+        // Update the progress bar and spinner if playing
+        if is_playing {
+            display_progress_bar(start_time.elapsed(), track_duration);
+            display_spinner(spinner_pos);
+            spinner_pos += 1;
+        }
 
         // Check for user input (e.g., play/pause, volume control)
         if event::poll(Duration::from_millis(500)).unwrap() {
             if let event::Event::Key(key) = event::read().unwrap() {
+                // Debounce: check if enough time has passed since the last press
+                if last_press_time.elapsed() < Duration::from_millis(300) {
+                    continue;
+                }
+                last_press_time = Instant::now();
+
                 match key.code {
-                    event::KeyCode::Char('q') => break,
-                    event::KeyCode::Char('p') => {
+                    KeyCode::Char('q') => {
+                        clear_screen();
+                        break;
+                    }
+                    KeyCode::Char('p') => {
                         let s = sink.lock().unwrap();
-                        if s.is_paused() {
+                        if !is_playing {
                             s.play();
                         } else {
                             s.pause();
                         }
+                        is_playing = !is_playing;
                     }
                     event::KeyCode::Char('+') => adjust_volume(&sink.lock().unwrap(), true),
                     event::KeyCode::Char('-') => adjust_volume(&sink.lock().unwrap(), false),
