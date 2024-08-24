@@ -6,9 +6,12 @@ edition = "2021"
 [dependencies]
 rodio = "0.19.0"
 crossterm = "0.28.1"
-serde = { version = "1.0", features = ["derive"] }
-toml = "0.8.7"
+serde = { version = "1.0.209", features = ["derive"] }
+toml = "0.8.19"
 log = "0.4"
 env_logger = "0.11.5"
 reqwest = { version = "0.12.7", features = ["blocking"] }
-symphonia = { version = "0.5", features = ["mp3"] }
+symphonia = { version = "0.5.4", features = ["aac", "mp3", "flac"] }
+cpal = "0.15.3"  # No `features` here
+winapi = { version = "0.3.9", features = ["errhandlingapi", "winuser"] }
+unicode-segmentation = "1.11.0"
