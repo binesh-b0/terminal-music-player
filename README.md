@@ -1,5 +1,6 @@
 # Terminal Music Player
 
+
 The Terminal Music Player is a simple, terminal-based music player written in Rust. It allows you to play audio files directly from the terminal with a minimalistic and interactive user interface. The player supports various audio formats, including MP3, AAC, and FLAC, and provides basic features such as play/pause, volume control, and track navigation within a playlist. The UI includes a progress bar, metadata display, and key bindings for easy control.
 
 ## Features
@@ -73,7 +74,7 @@ Tracks can be added to the playlist by providing their file paths. The player wi
 - **`winapi`**: Windows API bindings.
 - **`unicode-segmentation`**: Used for handling Unicode strings.
 
-### Not yet implemented
+#### Not yet implemented
 
- - next, previous track
- - playlist directories
+- next, previous track
+- playlist directories

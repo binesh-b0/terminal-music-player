@@ -30,16 +30,19 @@ pub fn move_cursor_to(x: u16, y: u16) {
 ///
 /// * `title` - The title of the track.
 /// * `duration` - The duration of the track as a `Duration`.
-/// * `file_name` - The name of the audio file being played.
-pub fn display_metadata(title: &str, duration: Duration, file_name: &str) {
+/// * `file_name` - name of the file.
+/// * `album` - album name.
+/// * `artist` - artist name.
+pub fn display_metadata(title: &str, duration: Duration, file_name: &str,album: &str,artist:&str) {
     // Move the cursor to the position where metadata should be displayed.
     move_cursor_to(2, 1);
-    // Print the file name, title, and duration, with styling.
     println!(
-        "{}\n{} - Duration: {}",
-        file_name.blue().bold(),                    // Style the file name in blue and bold.
-        title.green().bold(),                       // Style the title in green and bold.
-        format_time(duration.as_secs()).blue()      // Format and style the duration in blue.
+        "{}\n{} - Duration: {}\n{} : {}",
+        file_name.blue().bold(),                   
+        title.green().bold(),                       
+        format_time(duration.as_secs()).blue(),    
+        album.grey(),
+        artist.grey()
     );
 }
 
@@ -59,7 +62,7 @@ pub fn display_progress_bar(elapsed: Duration, total: Duration) {
     let bar = "█".repeat(filled_length) + &" ".repeat(progress_length - filled_length);
 
     // Move the cursor to the position where the progress bar should be displayed.
-    move_cursor_to(0, 3);
+    move_cursor_to(0, 4);
     // Print the progress bar along with elapsed and total time, with styling.
     println!(
         "[{}] {} / {}",

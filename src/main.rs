@@ -6,9 +6,7 @@ mod ui;
 use config::Config;
 use controls::adjust_volume;
 use playlist::Playlist;
-use ui::{
-    clear_screen, display_key_bindings, display_metadata, display_progress_bar, display_spinner,
-};
+use ui::{clear_screen, display_key_bindings, display_metadata, display_progress_bar, display_spinner};
 
 use crossterm::event::{self, KeyCode};
 use rodio::{Decoder, OutputStream, Sink};
@@ -38,7 +36,7 @@ use symphonia::default::get_probe;
 /// On failure, returns an error.
 fn load_audio_file(
     path: &Path,
-) -> Result<(Decoder<BufReader<File>>, Duration, String), Box<dyn std::error::Error>> {
+) -> Result<(Decoder<BufReader<File>>, Duration, String, String, String), Box<dyn std::error::Error>> {
     // Open the audio file
     let file = File::open(path)?;
 
@@ -62,26 +60,31 @@ fn load_audio_file(
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
         .ok_or("No valid track found")?;
 
-    // Initialize the decoder for the found track
-    // let mut decoder = symphonia::default::get_codecs()
-    //     .make(&track.codec_params, &DecoderOptions::default())?;
-
     let mut title = "Unknown Title".to_string();
+    let mut artist = "Unknown Artist".to_string();
+    let mut album = "Unknown Album".to_string();
 
-    // Extract metadata such as the title
+    // Extract metadata 
     if let Some(metadata) = probed.metadata.get() {
         for rev in metadata.current().iter() {
             for tag in rev.tags().iter() {
                 if let Some(key) = tag.std_key {
-                    if key == symphonia::core::meta::StandardTagKey::TrackTitle {
-                        title = tag.value.to_string();
-                        break;
+                    match key {
+                        symphonia::core::meta::StandardTagKey::TrackTitle => {
+                            title = tag.value.to_string();
+                        }
+                        symphonia::core::meta::StandardTagKey::Artist => {
+                            artist = tag.value.to_string();
+                        }
+                        symphonia::core::meta::StandardTagKey::Album => {
+                            album = tag.value.to_string();
+                        }
+                        _ => {}
                     }
                 }
             }
         }
     }
-    print!("{}", title.to_string());
 
     // Calculate the duration of the track
     let duration = track.codec_params.n_frames.map_or_else(
@@ -95,7 +98,7 @@ fn load_audio_file(
     // Create a `Decoder` for `rodio` playback
     let source = Decoder::new(BufReader::new(File::open(path)?))?;
 
-    Ok((source, duration, title))
+    Ok((source, duration, title, album, artist))
 }
 
 fn main() {
@@ -112,16 +115,13 @@ fn main() {
         Some(name) => name,
         None => {
             eprintln!("Failed to extract file name from path");
-            "unknown"
+            return;
         }
     };
 
     // Check if the provided path is a valid file
     if !file_path.is_file() {
-        eprintln!(
-            "The provided path is not a valid file: {}",
-            file_path.display()
-        );
+        eprintln!("The provided path is not a valid file: {}", file_path.display());
         return;
     }
 
@@ -152,7 +152,7 @@ fn main() {
     sink.lock().unwrap().set_volume(config.default_volume);
 
     // Load the audio file and extract its duration and title
-    let (source, track_duration, title) = match playlist.current_track() {
+    let (source, track_duration, title,album,artist,) = match playlist.current_track() {
         Some(track) => match load_audio_file(track) {
             Ok(result) => result,
             Err(e) => {
@@ -175,10 +175,12 @@ fn main() {
 
     // Clear the terminal screen and display the initial UI components
     clear_screen();
-    display_metadata(&title, track_duration, file_name);
+    display_metadata(&title, track_duration, file_name,&album,&artist);
     display_key_bindings();
+
     let mut is_playing = true;
     let mut last_press_time = Instant::now();
+
     // Main loop for updating the UI and handling user input
     loop {
         // Update the progress bar and spinner if playing
@@ -203,16 +205,16 @@ fn main() {
                         break;
                     }
                     KeyCode::Char('p') => {
-                        let s = sink.lock().unwrap();
-                        if !is_playing {
-                            s.play();
+                        let mut s = sink.lock().unwrap();
+                        if is_playing {
+                            s.pause()
                         } else {
-                            s.pause();
+                            s.play();
                         }
                         is_playing = !is_playing;
                     }
-                    event::KeyCode::Char('+') => adjust_volume(&sink.lock().unwrap(), true),
-                    event::KeyCode::Char('-') => adjust_volume(&sink.lock().unwrap(), false),
+                    KeyCode::Char('+') => adjust_volume(&sink.lock().unwrap(), true),
+                    KeyCode::Char('-') => adjust_volume(&sink.lock().unwrap(), false),
                     _ => {}
                 }
             }
