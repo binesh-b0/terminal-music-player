@@ -194,17 +194,70 @@ impl Player {
 fn load_source(
     path: &Path,
     seek_to: Duration,
-) -> anyhow::Result<(Box<dyn Source<Item = i16> + Send>, Option<Duration>)> {
+) -> anyhow::Result<(Box<dyn Source<Item = f32> + Send>, Option<Duration>)> {
     let file = File::open(path).with_context(|| format!("open '{}'", path.display()))?;
     let decoder = Decoder::new(BufReader::new(file))
         .with_context(|| format!("decode '{}'", path.display()))?;
 
     let duration = decoder.total_duration();
-    let source: Box<dyn Source<Item = i16> + Send> = if seek_to > Duration::ZERO {
-        Box::new(decoder.skip_duration(seek_to))
+    let source: Box<dyn Source<Item = f32> + Send> = if seek_to > Duration::ZERO {
+        Box::new(decoder.skip_duration(seek_to).convert_samples::<f32>())
     } else {
-        Box::new(decoder)
+        Box::new(decoder.convert_samples::<f32>())
     };
 
+    let source = fade_in(source, Duration::from_millis(20));
     Ok((source, duration))
+}
+
+fn fade_in(
+    source: Box<dyn Source<Item = f32> + Send>,
+    duration: Duration,
+) -> Box<dyn Source<Item = f32> + Send> {
+    let sample_rate = source.sample_rate();
+    let fade_samples = (duration.as_secs_f64() * f64::from(sample_rate)).round() as u64;
+    Box::new(FadeIn {
+        inner: source,
+        fade_samples: fade_samples.max(1),
+        emitted: 0,
+    })
+}
+
+struct FadeIn {
+    inner: Box<dyn Source<Item = f32> + Send>,
+    fade_samples: u64,
+    emitted: u64,
+}
+
+impl Iterator for FadeIn {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let sample = self.inner.next()?;
+        if self.emitted >= self.fade_samples {
+            return Some(sample);
+        }
+
+        let gain = (self.emitted as f32 / self.fade_samples as f32).clamp(0.0, 1.0);
+        self.emitted = self.emitted.saturating_add(1);
+        Some(sample * gain)
+    }
+}
+
+impl Source for FadeIn {
+    fn current_frame_len(&self) -> Option<usize> {
+        self.inner.current_frame_len()
+    }
+
+    fn channels(&self) -> u16 {
+        self.inner.channels()
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.inner.sample_rate()
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner.total_duration()
+    }
 }
