@@ -1,12 +1,15 @@
 # Terminal Music Player
 
-A simple terminal-based music player built with Rust. This project is a work-in-progress and is part of my journey to learn Rust. The application currently supports basic playback functionality, such as playing, pausing, and adjusting volume for audio files.
+A sleek terminal-based music player built with Rust. It scans a local music folder (configurable via `config.toml`) and provides a modern TUI with playlist navigation and playback controls.
 
 ## Features
 
-- Play and pause audio tracks
-- Adjust volume up and down
-- Command-line interface with basic controls
+- Modern TUI (Ratatui + Crossterm)
+- Playlist browser (loads audio files from a directory)
+- Play/pause/stop, next/previous
+- Seek (±5s, ±30s)
+- Volume + mute
+- Shuffle + repeat (Off/All/One)
 
 ## Installation
 
@@ -33,23 +36,33 @@ A simple terminal-based music player built with Rust. This project is a work-in-
 
 ## Usage
 
-- **P**: Play/Pause the current track
-- **+**: Increase the volume
-- **-**: Decrease the volume
-- **Q**: Quit the application
+The player loads audio files from `playlist_directory` in `config.toml`. If the folder is empty, it falls back to `sample.mp3` if present.
+
+- **↑/↓**: Move selection
+- **Enter**: Play selected track
+- **Space / P**: Play/Pause
+- **S**: Stop
+- **N / B**: Next / Previous
+- **← / →**: Seek -/+ 5s
+- **Shift + ← / →**: Seek -/+ 30s
+- **+ / -**: Volume up/down
+- **M**: Mute
+- **Z**: Toggle shuffle
+- **R**: Cycle repeat (Off/All/One)
+- **H / ?**: Help
+- **Q**: Quit
 
 ## Learning Goals
 
 - Understanding Rust's memory management and concurrency model
 - Working with external crates and libraries
-- Building a command-line interface (CLI) application
+- Building a terminal UI (TUI) application
 
 ## Next Steps
 
-- Implement playlist management (add/remove tracks, navigate between tracks)
-- Add support for additional audio formats
-- Improve error handling and logging
-- Explore cross-platform audio support
+- Add in-app search/filter
+- Add metadata (artist/album) + duration list
+- Improve queue management and persistence
 
 ## Contributions
 

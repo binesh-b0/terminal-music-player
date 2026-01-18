@@ -11,7 +11,11 @@ use std::time::Duration;
 pub fn draw(frame: &mut Frame, app: &App, player: &Player) {
     let root = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(2),
+        ])
         .split(frame.size());
 
     draw_header(frame, root[0], app, player);
@@ -25,7 +29,10 @@ pub fn draw(frame: &mut Frame, app: &App, player: &Player) {
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &App, player: &Player) {
     let title = Line::from(vec![
-        Span::styled("Terminal Music Player", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Terminal Music Player",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::raw("  "),
         Span::styled(
             format!("Shuffle: {}", if app.shuffle { "On" } else { "Off" }),
@@ -39,7 +46,11 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App, player: &Player) {
         Span::raw("  "),
         Span::styled(
             format!("Vol: {:>3}%", (player.volume() * 100.0).round() as u32),
-            Style::default().fg(if player.is_muted() { Color::DarkGray } else { Color::Green }),
+            Style::default().fg(if player.is_muted() {
+                Color::DarkGray
+            } else {
+                Color::Green
+            }),
         ),
     ]);
 
@@ -136,7 +147,7 @@ fn draw_now_playing(frame: &mut Frame, area: Rect, player: &Player) {
             let ratio = (pos.as_secs_f64() / total.as_secs_f64()).clamp(0.0, 1.0);
             (format!("{} / {}", fmt_time(pos), fmt_time(total)), ratio)
         }
-        _ => (format!("{}", fmt_time(pos)), 0.0),
+        _ => (fmt_time(pos), 0.0),
     };
 
     let gauge = Gauge::default()
@@ -213,14 +224,12 @@ fn draw_help(frame: &mut Frame, area: Rect) {
         Line::from("  Q        quit"),
     ]);
 
-    let help = Paragraph::new(text)
-        .wrap(Wrap { trim: true })
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .title(" Help "),
-        );
+    let help = Paragraph::new(text).wrap(Wrap { trim: true }).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Help "),
+    );
     frame.render_widget(help, popup);
 }
 

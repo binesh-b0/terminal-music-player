@@ -10,7 +10,9 @@ use crate::player::Player;
 use crate::playlist::Playlist;
 use anyhow::Context;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::{event, execute};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -23,7 +25,8 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     let config = Config::load();
 
-    let mut playlist = Playlist::from_dir(Path::new(&config.playlist_directory)).unwrap_or_else(|_| Playlist::new());
+    let mut playlist = Playlist::from_dir(Path::new(&config.playlist_directory))
+        .unwrap_or_else(|_| Playlist::new());
     if playlist.is_empty() && Path::new("sample.mp3").exists() {
         playlist.add_track(Path::new("sample.mp3").to_path_buf());
     }
@@ -34,7 +37,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let (_stream, stream_handle) = OutputStream::try_default().context("initialize audio output")?;
+    let (_stream, stream_handle) =
+        OutputStream::try_default().context("initialize audio output")?;
     let mut player = Player::new(stream_handle, config.default_volume);
     let mut app = App::new(playlist);
 
