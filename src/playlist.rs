@@ -61,6 +61,10 @@ impl Playlist {
         self.tracks.len()
     }
 
+    pub fn tracks(&self) -> &[PathBuf] {
+        &self.tracks
+    }
+
     pub fn current_index(&self) -> usize {
         self.current_index
     }

@@ -38,6 +38,11 @@ A sleek terminal-based music player built with Rust. It scans a local music fold
 
 The player loads audio files from `playlist_directory` in `config.toml`. If the folder is empty, it falls back to `sample.mp3` if present.
 
+You can also pass files/directories as arguments:
+
+- `cargo run -- music/`
+- `cargo run -- path/to/song.mp3`
+
 - **↑/↓**: Move selection
 - **Enter**: Play selected track
 - **Space / P**: Play/Pause
@@ -71,11 +76,3 @@ This project is primarily for learning purposes, but contributions and suggestio
 ## License
 
 This project is licensed under the MIT License.
-```
-
-
-### Description
-
-```plaintext
-A simple terminal-based music player built with Rust. Work-in-progress as part of learning Rust, focusing on basic audio playback and CLI interactions.
-```

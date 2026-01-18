@@ -17,24 +17,21 @@ use crossterm::{event, execute};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use rodio::OutputStream;
+use std::env;
 use std::io::{self, Stdout};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let config = Config::load();
 
-    let mut playlist = Playlist::from_dir(Path::new(&config.playlist_directory))
-        .unwrap_or_else(|_| Playlist::new());
+    let mut playlist = build_playlist(&config);
     if playlist.is_empty() && Path::new("sample.mp3").exists() {
         playlist.add_track(Path::new("sample.mp3").to_path_buf());
     }
     if playlist.is_empty() {
-        anyhow::bail!(
-            "No audio files found. Put music in '{}' or add 'sample.mp3'.",
-            config.playlist_directory
-        );
+        anyhow::bail!("No audio files found. Configure `playlist_directory`, pass a file/dir as an argument, or add `sample.mp3`.");
     }
 
     let (_stream, stream_handle) =
@@ -50,6 +47,27 @@ fn main() -> anyhow::Result<()> {
     restore_terminal(&mut terminal).ok();
 
     result
+}
+
+fn build_playlist(config: &Config) -> Playlist {
+    let args: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
+    if args.is_empty() {
+        return Playlist::from_dir(Path::new(&config.playlist_directory))
+            .unwrap_or_else(|_| Playlist::new());
+    }
+
+    let mut playlist = Playlist::new();
+    for path in args {
+        if path.is_dir() {
+            if let Ok(dir_playlist) = Playlist::from_dir(&path) {
+                playlist.add_tracks(dir_playlist.tracks().iter().cloned());
+            }
+        } else if path.is_file() {
+            playlist.add_track(path);
+        }
+    }
+
+    playlist
 }
 
 fn run_app(
