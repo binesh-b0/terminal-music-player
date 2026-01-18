@@ -13,11 +13,6 @@ pub fn adjust_volume(sink: &Sink, increase: bool) {
 
 pub fn display_progress(start_time: Instant, track_duration: Duration) {
     let elapsed = start_time.elapsed();
-    let remaining = if track_duration > elapsed {
-        track_duration - elapsed
-    } else {
-        Duration::new(0, 0)
-    };
     println!(
         "Progress: [{}/{}]",
         format_time(elapsed.as_secs()),

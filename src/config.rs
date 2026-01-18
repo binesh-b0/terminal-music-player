@@ -8,7 +8,21 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Self {
-        let config_str = std::fs::read_to_string("config.toml").unwrap();
-        toml::from_str(&config_str).unwrap()
+        let defaults = Self::default();
+        let config_str = match std::fs::read_to_string("config.toml") {
+            Ok(contents) => contents,
+            Err(_) => return defaults,
+        };
+
+        toml::from_str(&config_str).unwrap_or(defaults)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            default_volume: 0.5,
+            playlist_directory: "music/".to_string(),
+        }
     }
 }

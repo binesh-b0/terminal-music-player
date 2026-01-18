@@ -23,24 +23,57 @@ fn load_audio_file(path: &Path) -> Result<Decoder<BufReader<File>>, rodio::decod
 
 
 fn main() {
-    // Load config
     let config = Config::load();
 
-    // Setup playlist
-    let mut playlist = Playlist::new();
-    playlist.add_track(Path::new("sample.mp3").to_path_buf());
+    let mut playlist = match Playlist::from_dir(Path::new(&config.playlist_directory)) {
+        Ok(playlist) => playlist,
+        Err(err) => {
+            eprintln!(
+                "Failed to read playlist directory '{}': {err}",
+                config.playlist_directory
+            );
+            Playlist::new()
+        }
+    };
 
-    // Setup audio stream
-    let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-    let sink = Arc::new(Mutex::new(Sink::try_new(&stream_handle).unwrap()));
-    sink.lock().unwrap().set_volume(config.default_volume);
+    if playlist.is_empty() && Path::new("sample.mp3").exists() {
+        playlist.add_track(Path::new("sample.mp3").to_path_buf());
+    }
+
+    let (_stream, stream_handle) = match OutputStream::try_default() {
+        Ok(parts) => parts,
+        Err(err) => {
+            eprintln!("Failed to initialize audio output: {err}");
+            return;
+        }
+    };
+
+    let sink = match Sink::try_new(&stream_handle) {
+        Ok(sink) => Arc::new(Mutex::new(sink)),
+        Err(err) => {
+            eprintln!("Failed to create audio sink: {err}");
+            return;
+        }
+    };
+
+    if let Ok(locked) = sink.lock() {
+        locked.set_volume(config.default_volume);
+    }
 
     let sink_clone = Arc::clone(&sink);
     thread::spawn(move || {
         if let Some(track) = playlist.current_track() {
-            let source = load_audio_file(&track).unwrap();
-            sink_clone.lock().unwrap().append(source);
-            sink_clone.lock().unwrap().play();
+            match load_audio_file(&track) {
+                Ok(source) => {
+                    if let Ok(locked) = sink_clone.lock() {
+                        locked.append(source);
+                        locked.play();
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Failed to load audio file '{}': {err}", track.display());
+                }
+            }
         }
     });
 
@@ -53,20 +86,29 @@ fn main() {
         show_help_menu();
         display_progress(start_time, track_duration);
 
-        if event::poll(Duration::from_millis(500)).unwrap() {
-            if let event::Event::Key(key) = event::read().unwrap() {
+        if event::poll(Duration::from_millis(500)).unwrap_or(false) {
+            if let Ok(event::Event::Key(key)) = event::read() {
                 match key.code {
                     event::KeyCode::Char('q') => break,
                     event::KeyCode::Char('p') => {
-                        let s = sink.lock().unwrap();
-                        if s.is_paused() {
-                            s.play();
-                        } else {
-                            s.pause();
+                        if let Ok(s) = sink.lock() {
+                            if s.is_paused() {
+                                s.play();
+                            } else {
+                                s.pause();
+                            }
                         }
                     }
-                    event::KeyCode::Char('+') => adjust_volume(&sink.lock().unwrap(), true),
-                    event::KeyCode::Char('-') => adjust_volume(&sink.lock().unwrap(), false),
+                    event::KeyCode::Char('+') => {
+                        if let Ok(s) = sink.lock() {
+                            adjust_volume(&s, true);
+                        }
+                    }
+                    event::KeyCode::Char('-') => {
+                        if let Ok(s) = sink.lock() {
+                            adjust_volume(&s, false);
+                        }
+                    }
                     _ => {}
                 }
             }
