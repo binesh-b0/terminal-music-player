@@ -39,6 +39,9 @@ fn main() -> anyhow::Result<()> {
     let mut app = App::new(playlist);
 
     let mut terminal = setup_terminal().context("setup terminal")?;
+    if let Err(err) = app.play_current(&mut player) {
+        app.status = format!("Error: {err}");
+    }
     let result = run_app(&mut terminal, &mut app, &mut player);
     restore_terminal(&mut terminal).ok();
 
@@ -55,7 +58,9 @@ fn run_app(
     loop {
         terminal.draw(|frame| ui::draw(frame, app, player))?;
 
-        app.on_tick(player)?;
+        if let Err(err) = app.on_tick(player) {
+            app.status = format!("Error: {err}");
+        }
 
         if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {
@@ -64,22 +69,66 @@ fn run_app(
                 }
 
                 match (key.code, key.modifiers) {
+                    (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
                     (KeyCode::Char('q'), _) => break,
+                    (KeyCode::Esc, _) => app.show_help = false,
                     (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => app.toggle_help(),
                     (KeyCode::Up, _) => app.move_selection_up(),
                     (KeyCode::Down, _) => app.move_selection_down(),
-                    (KeyCode::Enter, _) => app.play_selected(player)?,
-                    (KeyCode::Char(' '), _) | (KeyCode::Char('p'), _) => app.toggle_pause(player),
+                    (KeyCode::Home, _) => app.selection = 0,
+                    (KeyCode::End, _) => {
+                        if !app.playlist.is_empty() {
+                            app.selection = app.playlist.len() - 1;
+                        }
+                    }
+                    (KeyCode::Enter, _) => {
+                        if let Err(err) = app.play_selected(player) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Char(' '), _) | (KeyCode::Char('p'), _) => {
+                        if player.state() == crate::player::PlaybackState::Stopped {
+                            if let Err(err) = app.play_selected(player) {
+                                app.status = format!("Error: {err}");
+                            }
+                        } else {
+                            app.toggle_pause(player);
+                        }
+                    }
                     (KeyCode::Char('s'), _) => {
                         player.stop();
                         app.status = "Stopped".to_string();
                     }
-                    (KeyCode::Char('n'), _) => app.next_track(player)?,
-                    (KeyCode::Char('b'), _) => app.previous_track(player)?,
-                    (KeyCode::Left, KeyModifiers::SHIFT) => app.seek_backward(player, 30)?,
-                    (KeyCode::Right, KeyModifiers::SHIFT) => app.seek_forward(player, 30)?,
-                    (KeyCode::Left, _) => app.seek_backward(player, 5)?,
-                    (KeyCode::Right, _) => app.seek_forward(player, 5)?,
+                    (KeyCode::Char('n'), _) => {
+                        if let Err(err) = app.next_track(player) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Char('b'), _) => {
+                        if let Err(err) = app.previous_track(player) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Left, KeyModifiers::SHIFT) => {
+                        if let Err(err) = app.seek_backward(player, 30) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Right, KeyModifiers::SHIFT) => {
+                        if let Err(err) = app.seek_forward(player, 30) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Left, _) => {
+                        if let Err(err) = app.seek_backward(player, 5) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
+                    (KeyCode::Right, _) => {
+                        if let Err(err) = app.seek_forward(player, 5) {
+                            app.status = format!("Error: {err}");
+                        }
+                    }
                     (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
                         player.adjust_volume(0.05);
                         app.status = "Volume up".to_string();
