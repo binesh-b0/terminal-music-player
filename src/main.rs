@@ -1,117 +1,135 @@
-mod playlist;
+mod app;
 mod config;
-mod controls;
+mod player;
+mod playlist;
+mod ui;
 
-use playlist::Playlist;
-use config::Config;
-use controls::{adjust_volume, display_progress, show_help_menu};
-
-use rodio::{Decoder, OutputStream, Sink};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use crate::app::App;
+use crate::config::Config;
+use crate::player::Player;
+use crate::playlist::Playlist;
+use anyhow::Context;
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::{event, execute};
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use rodio::OutputStream;
+use std::io::{self, Stdout};
 use std::path::Path;
-use std::io::BufReader;
-use std::fs::File;
-use crossterm::event;
+use std::time::Duration;
 
-fn load_audio_file(path: &Path) -> Result<Decoder<BufReader<File>>, rodio::decoder::DecoderError> {
-    let file = File::open(path).map_err(|e| rodio::decoder::DecoderError::IoError(e.to_string()))?;
-    let source = Decoder::new(BufReader::new(file))?;
-    Ok(source)
-}
-
-
-fn main() {
+fn main() -> anyhow::Result<()> {
+    env_logger::init();
     let config = Config::load();
 
-    let mut playlist = match Playlist::from_dir(Path::new(&config.playlist_directory)) {
-        Ok(playlist) => playlist,
-        Err(err) => {
-            eprintln!(
-                "Failed to read playlist directory '{}': {err}",
-                config.playlist_directory
-            );
-            Playlist::new()
-        }
-    };
-
+    let mut playlist = Playlist::from_dir(Path::new(&config.playlist_directory)).unwrap_or_else(|_| Playlist::new());
     if playlist.is_empty() && Path::new("sample.mp3").exists() {
         playlist.add_track(Path::new("sample.mp3").to_path_buf());
     }
-
-    let (_stream, stream_handle) = match OutputStream::try_default() {
-        Ok(parts) => parts,
-        Err(err) => {
-            eprintln!("Failed to initialize audio output: {err}");
-            return;
-        }
-    };
-
-    let sink = match Sink::try_new(&stream_handle) {
-        Ok(sink) => Arc::new(Mutex::new(sink)),
-        Err(err) => {
-            eprintln!("Failed to create audio sink: {err}");
-            return;
-        }
-    };
-
-    if let Ok(locked) = sink.lock() {
-        locked.set_volume(config.default_volume);
+    if playlist.is_empty() {
+        anyhow::bail!(
+            "No audio files found. Put music in '{}' or add 'sample.mp3'.",
+            config.playlist_directory
+        );
     }
 
-    let sink_clone = Arc::clone(&sink);
-    thread::spawn(move || {
-        if let Some(track) = playlist.current_track() {
-            match load_audio_file(&track) {
-                Ok(source) => {
-                    if let Ok(locked) = sink_clone.lock() {
-                        locked.append(source);
-                        locked.play();
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Failed to load audio file '{}': {err}", track.display());
-                }
-            }
-        }
-    });
+    let (_stream, stream_handle) = OutputStream::try_default().context("initialize audio output")?;
+    let mut player = Player::new(stream_handle, config.default_volume);
+    let mut app = App::new(playlist);
 
-    let start_time = Instant::now();
-    let track_duration = Duration::from_secs(300); // Example duration, replace with actual duration
+    let mut terminal = setup_terminal().context("setup terminal")?;
+    let result = run_app(&mut terminal, &mut app, &mut player);
+    restore_terminal(&mut terminal).ok();
 
-    // Terminal UI loop
+    result
+}
+
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    app: &mut App,
+    player: &mut Player,
+) -> anyhow::Result<()> {
+    let tick_rate = Duration::from_millis(100);
+
     loop {
-        // Display UI, handle input, etc.
-        show_help_menu();
-        display_progress(start_time, track_duration);
+        terminal.draw(|frame| ui::draw(frame, app, player))?;
 
-        if event::poll(Duration::from_millis(500)).unwrap_or(false) {
-            if let Ok(event::Event::Key(key)) = event::read() {
-                match key.code {
-                    event::KeyCode::Char('q') => break,
-                    event::KeyCode::Char('p') => {
-                        if let Ok(s) = sink.lock() {
-                            if s.is_paused() {
-                                s.play();
-                            } else {
-                                s.pause();
-                            }
-                        }
+        app.on_tick(player)?;
+
+        if event::poll(tick_rate)? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
+                match (key.code, key.modifiers) {
+                    (KeyCode::Char('q'), _) => break,
+                    (KeyCode::Char('h'), _) | (KeyCode::Char('?'), _) => app.toggle_help(),
+                    (KeyCode::Up, _) => app.move_selection_up(),
+                    (KeyCode::Down, _) => app.move_selection_down(),
+                    (KeyCode::Enter, _) => app.play_selected(player)?,
+                    (KeyCode::Char(' '), _) | (KeyCode::Char('p'), _) => app.toggle_pause(player),
+                    (KeyCode::Char('s'), _) => {
+                        player.stop();
+                        app.status = "Stopped".to_string();
                     }
-                    event::KeyCode::Char('+') => {
-                        if let Ok(s) = sink.lock() {
-                            adjust_volume(&s, true);
-                        }
+                    (KeyCode::Char('n'), _) => app.next_track(player)?,
+                    (KeyCode::Char('b'), _) => app.previous_track(player)?,
+                    (KeyCode::Left, KeyModifiers::SHIFT) => app.seek_backward(player, 30)?,
+                    (KeyCode::Right, KeyModifiers::SHIFT) => app.seek_forward(player, 30)?,
+                    (KeyCode::Left, _) => app.seek_backward(player, 5)?,
+                    (KeyCode::Right, _) => app.seek_forward(player, 5)?,
+                    (KeyCode::Char('+'), _) | (KeyCode::Char('='), _) => {
+                        player.adjust_volume(0.05);
+                        app.status = "Volume up".to_string();
                     }
-                    event::KeyCode::Char('-') => {
-                        if let Ok(s) = sink.lock() {
-                            adjust_volume(&s, false);
-                        }
+                    (KeyCode::Char('-'), _) => {
+                        player.adjust_volume(-0.05);
+                        app.status = "Volume down".to_string();
+                    }
+                    (KeyCode::Char('m'), _) => {
+                        player.toggle_mute();
+                        app.status = if player.is_muted() {
+                            "Muted".to_string()
+                        } else {
+                            "Unmuted".to_string()
+                        };
+                    }
+                    (KeyCode::Char('z'), _) => {
+                        app.toggle_shuffle();
+                        app.status = if app.shuffle {
+                            "Shuffle on".to_string()
+                        } else {
+                            "Shuffle off".to_string()
+                        };
+                    }
+                    (KeyCode::Char('r'), _) => {
+                        app.cycle_repeat();
+                        app.status = format!("Repeat: {}", app.repeat.label());
                     }
                     _ => {}
                 }
             }
         }
     }
+
+    Ok(())
+}
+
+fn setup_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+    Ok(terminal)
+}
+
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+    Ok(())
 }

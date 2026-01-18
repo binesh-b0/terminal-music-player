@@ -61,6 +61,23 @@ impl Playlist {
         self.tracks.len()
     }
 
+    pub fn current_index(&self) -> usize {
+        self.current_index
+    }
+
+    pub fn set_current_index(&mut self, index: usize) {
+        if self.tracks.is_empty() {
+            self.current_index = 0;
+            return;
+        }
+
+        self.current_index = index.min(self.tracks.len() - 1);
+    }
+
+    pub fn track_at(&self, index: usize) -> Option<&PathBuf> {
+        self.tracks.get(index)
+    }
+
     pub fn next(&mut self) -> Option<&PathBuf> {
         if !self.tracks.is_empty() {
             self.current_index = (self.current_index + 1) % self.tracks.len();
